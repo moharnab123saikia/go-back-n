@@ -102,7 +102,7 @@ if __name__ == "__main__":
     
     while True:
         data, address = server_sockfd.recvfrom(32768)
-        if(data == "File_sent"):
+        if(data == "File_sent!"):
             break
         recv_seq_num = int(data[0:32], 2)
         if(recv_seq_num == seq_num):

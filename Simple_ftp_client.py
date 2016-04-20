@@ -1,10 +1,8 @@
 import os
 import sys
 import socket
-import thread
-from threading import *
+import threading
 import time
-from time import *
 import binascii
 
 
@@ -32,56 +30,45 @@ def calculate_checksum(message):
             total -= 65535
     total = 65535 - total
     checksum_bits = '{0:016b}'.format(total)
-#     msg_header = message[0:32] + checksum_bits + message[48:]
     return checksum_bits
 
 def generate_msg(sequence, msg):
-    data = ""
-#     for i in range(0, len(msg)):
-#         data_character = msg[i]
-#         data_byte = '{0:08b}'.format(ord(data_character))
-#         data = data + data_byte
-        
-#     data = bin(int(binascii.hexlify(msg), 16))
-    data = text_to_bits(msg)
+    msg_data = ""
+    msg_data = text_to_bits(msg)
     sequence_bits = '{0:032b}'.format(sequence)
-    message = sequence_bits + "0"*16 + "01"*8 + data
+    message = sequence_bits + "0"*16 + "01"*8 + msg_data
     msg_checksum = calculate_checksum(message)
     final_msg = message[0:32] + msg_checksum + message[48:]
     return final_msg
 
-def recv_data():
+def receive_ack():
     global seq_num
-    global gbntimer
+    global prog_timer
     global index
     while True:
-        # print "Receiving thread is running"
         (data, server) = server_sockfd.recvfrom(8240)
         lock.acquire()
-        ackstr = "10"*8
-        # print "data received"
-        if(data[48:64] == ackstr):
+        if(data[48:64] == ACK_STR):
             pass
         else:
-            print "Discarding packet as this is not ack"
+            print "Discarding packet: not ACK"
         recv_seq_num = int(data[0:32], 2)
         if(recv_seq_num == (total_packets + 1)):
             seq_num = recv_seq_num
-            server_sockfd.sendto("File_sent", server);
-            print "File is successfully sent"
+            server_sockfd.sendto("File_sent!", server)
+            print "File sent!"
             lock.release()
             break
         if(recv_seq_num > seq_num):
             diff = recv_seq_num - seq_num
             index = index - diff
             seq_num = recv_seq_num
-            # print "Received seq number is %d and timer restarted" % recv_seq_num
-            gbntimer.cancel()
-            gbntimer = Timer(timerange, handle_timeout)
-            gbntimer.start()
+            prog_timer.cancel()
+            prog_timer = threading.Timer(timerange, handle_timeout)
+            prog_timer.start()
             lock.release()
         else:
-            # print "Duplicate ack received. No action"
+            print "Duplicate ack received. No action"
             lock.release()
 
     
@@ -92,11 +79,21 @@ def handle_timeout():
         print "Timeout, sequence number is %d" % seq_num
     timeout = 1
 
-
+def file_initial_process(file_name):
+    if not os.path.isfile(file_name):
+        print "File not present in the given path"
+        sys.exit(0)
+    
+    input_file = open(file_name, "r")
+    total_file = input_file.read()
+    input_file.close()
+    total_packets = len(total_file) / mss
+    return total_packets
 
 
 if __name__ == "__main__":
     
+    global ACK_STR
     global lock
     global timerlock
     global seq_num
@@ -105,14 +102,14 @@ if __name__ == "__main__":
     global window
     global mss
     global total_packets
-    global gbntimer
+    global prog_timer
     global timeout
     global timerange
     global index
     
-    
-    lock = Lock()
-    timerlock = Lock()
+    ACK_STR = "1010101010101010"
+    lock = threading.Lock()
+    timerlock = threading.Lock()
     seq_num = 0
     timeout = 0
     timerange = 0.5
@@ -131,81 +128,48 @@ if __name__ == "__main__":
     mss = 500
     
     
-    start_time = time()
-    print start_time
+    start_time = time.time()
+    print "Start time: " + str(start_time)
     
     server_sockfd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_sockfd.sendto("This is first message", (server_hostname, server_port))
 
-    t1 = Thread(target=recv_data, args=())
+    t1 = threading.Thread(target=receive_ack, args=())
     t1.start()
     
-    if not os.path.isfile(file_name):
-        print "File not present in the given path"
-        sys.exit(0)
-       
-    
-    fo = open(file_name, "r")
-    total_file = fo.read()
-    total_packets = len(total_file) / mss
+    total_packets = file_initial_process(file_name)
     
     curr_seq_num = seq_num;
     
-    gbntimer = Timer(timerange, handle_timeout)
-    gbntimer.start()
+    prog_timer = threading.Timer(timerange, handle_timeout)
+    prog_timer.start()
     while(t1.isAlive()):
-        # print "Index is %d and window is %d" % (index,window)
         while(index < window):
-            fo = open(file_name, "r")
-            # print "lock not acquired"
+            input_file = open(file_name, "r")
             lock.acquire()
-            # print "lock is acquired in main"
-            if(curr_seq_num == seq_num):
+            if(curr_seq_num != seq_num):
                 curr_seq_num = seq_num
-                temp_index = index
-                lock.release();
-                fo.seek((curr_seq_num + temp_index) * mss, 0)
-                msgs = fo.read(mss)
-                counter = msgs.count('\n')
-                msg = msgs#[0:(mss - counter)]
-                fo.close()
-                # print "Message is %s" % msg
-                if(len(msg) != 0):
-                    # print "Message formed first"
-                    msg_final = generate_msg((temp_index + curr_seq_num), msg)
-                    index = index + 1
-                    # print "message sent first and index is %d" % index
-                    server_sockfd.sendto(msg_final, (server_hostname, server_port))
-                else:
-                    break
+            
+            temp_index = index
+            lock.release();
+            input_file.seek((curr_seq_num + temp_index) * mss, 0)
+            msg = input_file.read(mss)
+            input_file.close()
+            if(len(msg) != 0):
+                msg_final = generate_msg((temp_index + curr_seq_num), msg)
+                index = index + 1
+                server_sockfd.sendto(msg_final, (server_hostname, server_port))
             else:
-                curr_seq_num = seq_num
-                temp_index = index
-                lock.release();
-                fo.seek((curr_seq_num + temp_index) * mss, 0)
-                msgs = fo.read(mss)
-                counter = msgs.count('\n')
-                msg = msgs#[0:(mss - counter)]
-                fo.close()
-                # print "Message is %s" % msg
-                if(len(msg) != 0):
-                    # print "Message formed second"
-                    msg_final = generate_msg((temp_index + curr_seq_num), msg)
-                    index = index + 1
-                    # print "message sent second and index is %d" % index
-                    server_sockfd.sendto(msg_final, (server_hostname, server_port))
-                else:
-                    break
+                break
                     
         if(timeout == 1):
-            # print "In timeout, resetting index"
             index = 0
-            gbntimer = Timer(timerange, handle_timeout)
-            gbntimer.start()
+            prog_timer = threading.Timer(timerange, handle_timeout)
+            prog_timer.start()
             timeout = 0
     
     server_sockfd.close()
-    stop_time = time()
+    stop_time = time.time()
     
-    print stop_time
-    print stop_time - start_time
+    print "Stop time: " + str(stop_time)
+    print "Running Time:" + str(stop_time - start_time)
