@@ -4,6 +4,8 @@ import os
 import random
 import sys
 import binascii
+import fcntl
+import struct
 
 def text_to_bits(text, encoding='utf-8', errors='surrogatepass'):
     bits = bin(int(binascii.hexlify(text.encode(encoding, errors)), 16))[2:]
@@ -43,15 +45,8 @@ def checksum(msg):
 
 def parse_data(message):
     write_data = ""
-#     print type(str(text_from_bits(message)))
     write_data += str(text_from_bits(message))
     return write_data
-#     iterations = len(message) / 8 # print "Received message is %s" % message
-#     for i in range(0, iterations):
-#         bit_data = str(message[i * 8:(i + 1) * 8])
-#         char_data = chr(int(bit_data, 2))
-#         write_data += char_data
-#     return write_data
 
 def write_data(message, output_file):
     write_data = parse_data(message)
@@ -64,27 +59,28 @@ def parse_cmd():
     prob = sys.argv[3]
     return int(server_port), file_name, float(prob)
 
+def get_ip_address(ifname):
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        return socket.inet_ntoa(fcntl.ioctl(
+                                            s.fileno(),
+                                            0x8915,  # SIOCGIFADDR
+                                            struct.pack('256s', ifname[:15])
+                                            )[20:24])
+
 if __name__ == "__main__":
     global seq_num, ZERO_FIELD, ACK_FIELD
     ZERO_FIELD = '0000000000000000'
     ACK_FIELD = '1010101010101010'
-#     check_parameters()
-#     server_port, file_name, prob = parse_cmd()
+    check_parameters()
+    server_port, file_name, prob = parse_cmd()
     
-    server_hostname = socket.gethostname()
+    server_ip = get_ip_address('wlp1s0')
+    server_hostname = server_ip
     timestr = time.strftime("%Y%m%d-%H%M%S")
-    
+    print "Server IP: "+ str(server_ip)
 
     server_port = 7735
-    file_name = 'file_' + str(timestr) + '.txt'
-    prob = 0.01
-    prob_int = int(prob * 100)
-    
-    
-    # print server_hostname
-    # print server_port
-    # print file_name
-    # print probability
+#     file_name = 'file_' + str(timestr) + '.txt'
     
     if(os.path.isfile(file_name)):
         os.remove(file_name)

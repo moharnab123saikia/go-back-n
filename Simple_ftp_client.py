@@ -3,7 +3,9 @@ import sys
 import socket
 import threading
 import time
+import datetime
 import binascii
+
 
 
 def text_to_bits(text, encoding='utf-8', errors='surrogatepass'):
@@ -115,21 +117,18 @@ if __name__ == "__main__":
     timerange = 0.5
     index = 0
     
-    # server_hostname = str(sys.argv[1])
-    # server_port = int(sys.argv[2])
-    # file_name = str(sys.argv[3])
-    # window = int(sys.argv[4])
-    # mss = int(sys.argv[5])
+#     server_hostname = str(sys.argv[1])
+#     server_ip = socket.gethostbyname(server_hostname)
+    server_hostname = str(sys.argv[1])
+    server_port = int(sys.argv[2])
+    file_name = str(sys.argv[3])
+    window = int(sys.argv[4])
+    mss = int(sys.argv[5])
+         
     
-    server_hostname = socket.gethostname()
-    server_port = 7735
-    file_name = "test_file.txt"
-    window = 64
-    mss = 500
-    
-    
-    start_time = time.time()
-    print "Start time: " + str(start_time)
+    start_time = datetime.datetime.now()
+#     print "Start time: " + str(start_time)
+    print "Start time: " +  time.strftime('%l:%M:%S%p %Z on %b %d, %Y')
     
     server_sockfd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_sockfd.sendto("This is first message", (server_hostname, server_port))
@@ -169,7 +168,7 @@ if __name__ == "__main__":
             timeout = 0
     
     server_sockfd.close()
-    stop_time = time.time()
+    stop_time = datetime.datetime.now()
     
-    print "Stop time: " + str(stop_time)
-    print "Running Time:" + str(stop_time - start_time)
+#     print "Stop time: " + str(stop_time)
+    print "Running Time:" + str((stop_time - start_time).microseconds) + " ms"
